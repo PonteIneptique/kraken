@@ -23,7 +23,7 @@ import logging
 import bidi.algorithm as bd
 
 from PIL import Image
-from collections import defaultdict
+from collections import defaultdict, abc
 from typing import List, Tuple, Optional, Generator, Union, Dict
 
 from kraken.lib.util import get_im_str, is_bitonal
@@ -139,9 +139,36 @@ def bidi_record(record: ocr_record, base_dir=None) -> ocr_record:
     return rec
 
 
-class mm_rpred(object):
+class mm_rpred(abc.Iterator):
     """
-    Multi-model version of kraken.rpred.rpred
+    Multi-model version of kraken.rpred.rpred.
+
+    Takes a dictionary of script identifiers->models and an
+    script-annotated segmentation to dynamically select appropriate models
+    for these lines.
+
+    Args:
+        nets: A dict mapping script identifiers to TorchSegRecognizer
+              objects. Recommended to be an defaultdict.
+        im: Image to extract text from
+        bounds: A dictionary containing a 'boxes' entry with a list of
+                lists of coordinates (script, (x0, y0, x1, y1)) of a text
+                line in the image and an entry 'text_direction' containing
+                'horizontal-lr/rl/vertical-lr/rl'.
+        pad: Extra blank padding to the left and right of text line
+        bidi_reordering: Reorder classes in the ocr_record according to the
+                         Unicode bidirectional algorithm for correct
+                         display. Set to L|R to override default text
+                         direction.
+        script_ignore: List of scripts to ignore during recognition
+
+    Yields:
+        An ocr_record containing the recognized text, absolute character
+        positions, and confidence values for each character.
+
+    Raises:
+        KrakenInputException: if the mapping between segmentation scripts and
+                              networks is incomplete.
     """
     def __init__(self,
                  nets: Dict[str, TorchSeqRecognizer],
@@ -150,36 +177,6 @@ class mm_rpred(object):
                  pad: int = 16,
                  bidi_reordering: Union[bool, str] = True,
                  script_ignore: Optional[List[str]] = None) -> Generator[ocr_record, None, None]:
-        """
-        Multi-model version of kraken.rpred.rpred.
-
-        Takes a dictionary of ISO15924 script identifiers->models and an
-        script-annotated segmentation to dynamically select appropriate models for
-        these lines.
-
-        Args:
-            nets (dict): A dict mapping ISO15924 identifiers to TorchSegRecognizer
-                         objects. Recommended to be an defaultdict.
-            im (PIL.Image.Image): Image to extract text from
-            bounds (dict): A dictionary containing a 'boxes' entry
-                            with a list of lists of coordinates (script, (x0, y0,
-                            x1, y1)) of a text line in the image and an entry
-                            'text_direction' containing
-                            'horizontal-lr/rl/vertical-lr/rl'.
-            pad (int): Extra blank padding to the left and right of text line
-            bidi_reordering (bool|str): Reorder classes in the ocr_record according to
-                                        the Unicode bidirectional algorithm for
-                                        correct display. Set to L|R to
-                                        override default text direction.
-            script_ignore (list): List of scripts to ignore during recognition
-        Yields:
-            An ocr_record containing the recognized text, absolute character
-            positions, and confidence values for each character.
-
-        Raises:
-            KrakenInputException if the mapping between segmentation scripts and
-            networks is incomplete.
-        """
         seg_types = set(recognizer.seg_type for recognizer in nets.values())
         if isinstance(nets, defaultdict):
             seg_types.add(nets.default_factory().seg_type)
@@ -369,20 +366,19 @@ def rpred(network: TorchSeqRecognizer,
     Uses a TorchSeqRecognizer and a segmentation to recognize text
 
     Args:
-        network (kraken.lib.models.TorchSeqRecognizer): A TorchSegRecognizer
-                                                        object
-        im (PIL.Image.Image): Image to extract text from
-        bounds (dict): A dictionary containing a 'boxes' entry with a list of
-                       coordinates (x0, y0, x1, y1) of a text line in the image
-                       and an entry 'text_direction' containing
-                       'horizontal-lr/rl/vertical-lr/rl'.
-        pad (int): Extra blank padding to the left and right of text line.
-                   Auto-disabled when expected network inputs are incompatible
-                   with padding.
-        bidi_reordering (bool|str): Reorder classes in the ocr_record according to
-                                    the Unicode bidirectional algorithm for correct
-                                    display. Set to L|R to change base text
-                                    direction.
+        network: A TorchSegRecognizer object
+        im: Image to extract text from
+        bounds: A dictionary containing a 'boxes' entry with a list of
+                coordinates (x0, y0, x1, y1) of a text line in the image and an
+                entry 'text_direction' containing
+                'horizontal-lr/rl/vertical-lr/rl'.
+        pad: Extra blank padding to the left and right of text line.
+             Auto-disabled when expected network inputs are incompatible with
+             padding.
+        bidi_reordering: Reorder classes in the ocr_record according to the
+                         Unicode bidirectional algorithm for correct display.
+                         Set to L|R to change base text direction.
+
     Yields:
         An ocr_record containing the recognized text, absolute character
         positions, and confidence values for each character.

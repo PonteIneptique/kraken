@@ -55,19 +55,25 @@ alto_regions = {'TextBlock': 'text',
                 'ComposedBlock': 'composed'}
 
 
-def parse_xml(filename):
+def parse_xml(filename: str) -> Dict['str', Any]:
     """
     Parses either a PageXML or ALTO file with autodetermination of the file
     format.
 
     Args:
-        filename (str): path to an XML file.
+        filename: path to an XML file.
 
     Returns:
-        A dict {'image': impath, lines: [{'boundary': [[x0, y0], ...],
-        'baseline': [[x0, y0], ...]}, {...], 'text': 'apdjfqpf', 'script':
-        'script_type'}, regions: {'region_type_0': [[[x0, y0], ...], ...],
-        ...}, 'base_dir': None}
+        A dict::
+
+            {'image': impath,
+             'lines': [{'boundary': [[x0, y0], ...],
+                        'baseline': [[x0, y0], ...],
+                        'text': 'apdjfqpf',
+                        'script': 'script_type'}, ...],
+             'regions': {'region_type_0': [[[x0, y0], ...], ...],
+                         'region_type_1': [[[...], ...], ...]},
+             'base_dir': None}
     """
     with open(filename, 'rb') as fp:
         try:
@@ -82,19 +88,25 @@ def parse_xml(filename):
         raise KrakenInputException(f'Unknown XML format in {filename}')
 
 
-def parse_page(filename):
+def parse_page(filename: str) -> Dict[str, Any]:
     """
     Parses a PageXML file, returns the baselines defined in it, and loads the
     referenced image.
 
     Args:
-        filename (str): path to a PageXML file.
+        filename: path to a PageXML file.
 
     Returns:
-        A dict {'image': impath, lines: [{'boundary': [[x0, y0], ...],
-        'baseline': [[x0, y0], ...]}, {...], 'text': 'apdjfqpf', 'script':
-        'script_type'}, regions: {'region_type_0': [[[x0, y0], ...], ...],
-        ...}}
+        A dict::
+
+            {'image': impath,
+             'lines': [{'boundary': [[x0, y0], ...],
+                        'baseline': [[x0, y0], ...],
+                        'text': 'apdjfqpf',
+                        'script': 'script_type'}, ...],
+             'regions': {'region_type_0': [[[x0, y0], ...], ...],
+                         'region_type_1': [[[...], ...], ...]},
+             'base_dir': None}
     """
     def _parse_page_custom(s):
         o = {}
@@ -220,19 +232,25 @@ def parse_page(filename):
         return data
 
 
-def parse_alto(filename):
+def parse_alto(filename: str) -> Dict[str, Any]:
     """
     Parses an ALTO file, returns the baselines defined in it, and loads the
     referenced image.
 
     Args:
-        filename (str): path to an ALTO file.
+        filename: path to an ALTO file.
 
     Returns:
-        A dict {'image': impath, lines: [{'boundary': [[x0, y0], ...],
-        'baseline': [[x0, y0], ...]}, {...], 'text': 'apdjfqpf', 'script':
-        'script_type'}, regions: {'region_type_0': [[[x0, y0], ...], ...],
-        ...}, 'base_dir': None}
+        A dict::
+
+            {'image': impath,
+             'lines': [{'boundary': [[x0, y0], ...],
+                        'baseline': [[x0, y0], ...],
+                        'text': 'apdjfqpf',
+                        'script': 'script_type'}, ...],
+             'regions': {'region_type_0': [[[x0, y0], ...], ...],
+                         'region_type_1': [[[...], ...], ...]},
+             'base_dir': None}
     """
     with open(filename, 'rb') as fp:
         base_dir = dirname(filename)

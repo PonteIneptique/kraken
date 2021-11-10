@@ -48,59 +48,59 @@ class TorchVGSLModel(object):
     the time axis to 1 and putting the output into the channels dimension
     respectively.
 
+    A description of the Variable-size Graph Specification Language including
+    examples for some use cases can be found :ref:`here <vgsl>`.
+
+    Args:
+        spec: Model definition similar to tesseract as follows::
+
+                ============ FUNCTIONAL OPS ============
+                C(s|t|r|l|m)[{name}]<y>,<x>,<d>[,<y_stride>,<x_stride>]
+                  Convolves using a y,x window, with no shrinkage, SAME
+                  infill, d outputs, with s|t|r|l|m non-linear layer.
+                  (s|t|r|l|m) specifies the type of non-linearity:
+                  s = sigmoid
+                  t = tanh
+                  r = relu
+                  l = linear (i.e., None)
+                  m = softmax
+                L(f|r|b)(x|y)[s][{name}]<n> LSTM cell with n outputs.
+                  f runs the LSTM forward only.
+                  r runs the LSTM reversed only.
+                  b runs the LSTM bidirectionally.
+                  x runs the LSTM in the x-dimension (on data with or without the
+                     y-dimension).
+                  y runs the LSTM in the y-dimension (data must have a y dimension).
+                  s (optional) summarizes the output in the requested dimension,
+                     outputting only the final step, collapsing the dimension to a
+                     single element.
+                  Examples:
+                  Lfx128 runs a forward-only LSTM in the x-dimension with 128
+                         outputs, treating any y dimension independently.
+                  Lfys64 runs a forward-only LSTM in the y-dimension with 64 outputs
+                         and collapses the y-dimension to 1 element.
+                G(f|r|b)(x|y)[s][{name}]<n> GRU cell with n outputs.
+                  Arguments are equivalent to LSTM specs.
+                Do[{name}] Insert a 1D dropout layer with 0.5 drop probability.
+                ============ PLUMBING OPS ============
+                [...] Execute ... networks in series (layers).
+                Mp[{name}]<y>,<x>[<y_stride>,<x_stride>] Maxpool the input, reducing the (y,x) rectangle to a
+                  single vector value.
+                S[{name}]<d>(<a>x<b>)<e>,<f> Splits one dimension, moves one part to another
+                  dimension.
+
     Attributes:
-        input (tuple): Expected input tensor as a 4-tuple.
-        nn (torch.nn.Sequential): Stack of layers parsed from the spec.
-        criterion (torch.nn.Module): Fully parametrized loss function.
-        user_metdata (dict): dict with user defined metadata. Is flushed into
-                             model file during saving/overwritten by loading
-                             operations.
-        one_channel_mode (str): Field indicating the image type used during
-                                training of one-channel images. Is '1' for
-                                models trained on binarized images, 'L' for
-                                grayscale, and None otherwise.
+        input: Expected input tensor as a 4-tuple.
+        nn: Stack of layers parsed from the spec.
+        criterion: Fully parametrized loss function.
+        user_metadata: dict with user defined metadata. Is flushed into model
+                       file during saving/overwritten by loading operations.
+        one_channel_mode: Field indicating the image type used during training
+                          of one-channel images. Is '1' for models trained on
+                          binarized images, 'L' for grayscale, and None
+                          otherwise.
     """
     def __init__(self, spec: str) -> None:
-        """
-        Constructs a torch module from a (subset of) VSGL spec.
-
-        Args:
-            spec (str): Model definition similar to tesseract as follows:
-                        ============ FUNCTIONAL OPS ============
-                        C(s|t|r|l|m)[{name}]<y>,<x>,<d>[,<y_stride>,<x_stride>]
-                          Convolves using a y,x window, with no shrinkage, SAME
-                          infill, d outputs, with s|t|r|l|m non-linear layer.
-                          (s|t|r|l|m) specifies the type of non-linearity:
-                          s = sigmoid
-                          t = tanh
-                          r = relu
-                          l = linear (i.e., None)
-                          m = softmax
-                        L(f|r|b)(x|y)[s][{name}]<n> LSTM cell with n outputs.
-                          f runs the LSTM forward only.
-                          r runs the LSTM reversed only.
-                          b runs the LSTM bidirectionally.
-                          x runs the LSTM in the x-dimension (on data with or without the
-                             y-dimension).
-                          y runs the LSTM in the y-dimension (data must have a y dimension).
-                          s (optional) summarizes the output in the requested dimension,
-                             outputting only the final step, collapsing the dimension to a
-                             single element.
-                          Examples:
-                          Lfx128 runs a forward-only LSTM in the x-dimension with 128
-                                 outputs, treating any y dimension independently.
-                          Lfys64 runs a forward-only LSTM in the y-dimension with 64 outputs
-                                 and collapses the y-dimension to 1 element.
-                        G(f|r|b)(x|y)[s][{name}]<n> GRU cell with n outputs.
-                          Arguments are equivalent to LSTM specs.
-                        Do[{name}] Insert a 1D dropout layer with 0.5 drop probability.
-                        ============ PLUMBING OPS ============
-                        [...] Execute ... networks in series (layers).
-                        Mp[{name}]<y>,<x>[<y_stride>,<x_stride>] Maxpool the input, reducing the (y,x) rectangle to a
-                          single vector value.
-                        S[{name}]<d>(<a>x<b>)<e>,<f> Splits one dimension, moves one part to another
-                          dimension.
-        """
         self.spec = spec
         self.named_spec = []  # type:  List[str]
         self.ops = [self.build_rnn, self.build_dropout, self.build_maxpool,
@@ -157,9 +157,9 @@ class TorchVGSLModel(object):
         New layers are initialized using the init_weights method.
 
         Args:
-            idx (int): Index of layer to append spec to starting with 1.  To
-                       select the whole layer stack set idx to None.
-            spec (str): VGSL spec without input block to append to model.
+            idx: Index of layer to append spec to starting with 1.  To select
+                 the whole layer stack set idx to None.
+            spec: VGSL spec without input block to append to model.
         """
         self.nn = self.nn[:idx]
         self.idx = idx-1
@@ -338,20 +338,21 @@ class TorchVGSLModel(object):
         return nn
 
     @classmethod
-    def load_model(cls, path: str):
+    def load_model(cls, path: str) -> 'TorchVGSLModel':
         """
         Deserializes a VGSL model from a CoreML file.
 
         Args:
-            path (str): CoreML file
+            path: CoreML file path
 
         Returns:
             A TorchVGSLModel instance.
 
         Raises:
-            KrakenInvalidModelException if the model data is invalid (not a
-            string, protobuf file, or without appropriate metadata).
-            FileNotFoundError if the path doesn't point to a file.
+            KrakenInvalidModelException: if the model data is invalid (not a
+                                         string, protobuf file, or without
+                                         appropriate metadata).
+            FileNotFoundError: if the path doesn't point to a file.
         """
         try:
             mlmodel = MLModel(path)
@@ -421,7 +422,7 @@ class TorchVGSLModel(object):
         Serializes the model into path.
 
         Args:
-            path (str): Target destination
+            path: Target destination
         """
         inputs = [('input', datatypes.Array(*self.input))]
         outputs = [('output', datatypes.Array(*self.output))]
@@ -456,8 +457,8 @@ class TorchVGSLModel(object):
         uniformly from (-0.1,0.1).
 
         Args:
-            idx (slice): A slice object representing the indices of layers to
-                         initialize.
+            idx: A slice object representing the indices of layers to
+                 initialize.
         """
         def _wi(m):
             if isinstance(m, torch.nn.Linear):
@@ -485,8 +486,11 @@ class TorchVGSLModel(object):
         Sets the name field of an VGSL layer definition.
 
         Args:
-            layer (str): VGSL definition
-            name (str): Layer name
+            layer: VGSL definition
+            name: Layer name
+
+        Returns:
+            The layer definition with the inserted name.
         """
         if '{' in layer and '}' in layer:
             return layer
@@ -500,11 +504,11 @@ class TorchVGSLModel(object):
         name.
 
         Args:
-            layer (str): Identifier of the layer type
-            name (str): user-supplied {name} with {} that need removing.
+            layer: Identifier of the layer type
+            name: user-supplied {name} with {} that need removing.
 
         Returns:
-            (str) network unique layer name
+            str: network unique layer name
         """
         self.idx += 1
         if name:
@@ -517,8 +521,8 @@ class TorchVGSLModel(object):
         Resizes an output layer.
 
         Args:
-            output_size (int): New size/output channels of last layer
-            del_indices (list): list of outputs to delete from layer
+            output_size: New size/output channels of last layer
+            del_indices: list of outputs to delete from layer
         """
         if type(self.nn[-1]) not in [layers.ActConv2D, layers.LinSoftmax]:
             raise ValueError('last layer is neither linear nor convolutional layer')

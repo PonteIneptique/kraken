@@ -420,6 +420,19 @@ def baseline_label_evaluator_fn(model, val_loader, device):
 class KrakenTrainer(object):
     """
     Class encapsulating the recognition model training process.
+
+    Args:
+        model: Model to train
+        optimizer: A torch optimizer
+        device: Device to train on
+        filename_prefix: prefix of the intermediate output files
+        event_frequency: How often to run the evaluation function expressed as
+                         a fraction of an epoch.
+        train_set: Training dataset
+        val_set: Validation dataset
+        stopper: Stopping function
+        loss_fn: Loss function
+        evaluator: Function to run on the validation set.
     """
 
     def __init__(self,
@@ -429,8 +442,8 @@ class KrakenTrainer(object):
                  filename_prefix: str = 'model',
                  event_frequency: float = 1.0,
                  train_set: torch.utils.data.DataLoader = None,
-                 val_set=None,
-                 stopper=None,
+                 val_set: Optional[torch.utils.data.DataLoader] = None,
+                 stopper = None,
                  loss_fn=recognition_loss_fn,
                  evaluator=recognition_evaluator_fn):
         self.model = model
@@ -450,9 +463,27 @@ class KrakenTrainer(object):
         self.model.seg_type = train_set.dataset.seg_type
 
     def add_lr_scheduler(self, lr_scheduler: TrainScheduler):
+        """
+        Adds a learning rate scheduler to the training object.
+
+        Can be run multiple times.
+
+        Args:
+            lr_scheduler: Scheduler to add.
+        """
         self.lr_scheduler = lr_scheduler
 
     def run(self, event_callback=lambda *args, **kwargs: None, iteration_callback=lambda *args, **kwargs: None):
+        """
+        Initiates the training process.
+
+        During training the `event_callback` is executed after each epoch and
+        the `iteration_callback` after each minibatch.
+
+        Args:
+            event_callback:
+            iteration_callback:
+        """
         logger.debug('Moving model to device {}'.format(self.device))
         self.model.to(self.device)
         self.model.train()
@@ -543,7 +574,7 @@ class KrakenTrainer(object):
                               format_type: str = 'path',
                               codec: Optional[Dict] = None,
                               resize: str = 'fail',
-                              augment: bool = False):
+                              augment: bool = False) -> 'KrakenTrainer':
         """
         This is an ugly constructor that takes all the arguments from the command
         line driver, finagles the datasets, models, and hyperparameters correctly
@@ -555,18 +586,15 @@ class KrakenTrainer(object):
         `hyper_params` argument.
 
         Args:
-            hyper_params (dict): Hyperparameter dictionary containing all fields
-                                 from
-                                 kraken.lib.default_specs.RECOGNITION_HYPER_PARAMS
-            progress_callback (Callable): Callback for progress reports on various
-                                          computationally expensive processes. A
-                                          human readable string and the process
-                                          length is supplied. The callback has to
-                                          return another function which will be
-                                          executed after each step.
-            message (Callable): Messaging printing method for above log but below
-                                warning level output, i.e. infos that should
-                                generally be shown to users.
+            hyper_params: Hyperparameter dictionary containing all fields from
+                          kraken.lib.default_specs.RECOGNITION_HYPER_PARAMS
+            progress_callback: Callback for progress reports on various
+                               computationally expensive processes. A human
+                               readable string and the process length is
+                               supplied. The callback has to return another
+                               function which will be executed after each step.
+            message: Messaging printing method for above log but below warning
+                     level output, i.e. infos that should generally be shown to users.
             **kwargs: Setup parameters, i.e. CLI parameters of the train() command.
 
         Returns:
@@ -940,7 +968,7 @@ class KrakenTrainer(object):
                                bounding_regions: Optional[Sequence[str]] = None,
                                resize: str = 'fail',
                                augment: bool = False,
-                               topline: Union[bool, None] = False):
+                               topline: Union[bool, None] = False) -> 'KrakenTrainer':
         """
         This is an ugly constructor that takes all the arguments from the command
         line driver, finagles the datasets, models, and hyperparameters correctly
@@ -952,18 +980,16 @@ class KrakenTrainer(object):
         `hyper_params` argument.
 
         Args:
-            hyper_params (dict): Hyperparameter dictionary containing all fields
-                                 from
-                                 kraken.lib.default_specs.SEGMENTATION_HYPER_PARAMS
-            progress_callback (Callable): Callback for progress reports on various
-                                          computationally expensive processes. A
-                                          human readable string and the process
-                                          length is supplied. The callback has to
-                                          return another function which will be
-                                          executed after each step.
-            message (Callable): Messaging printing method for above log but below
-                                warning level output, i.e. infos that should
-                                generally be shown to users.
+            hyper_params: Hyperparameter dictionary containing all fields from
+                          kraken.lib.default_specs.SEGMENTATION_HYPER_PARAMS
+            progress_callback: Callback for progress reports on various
+                               computationally expensive processes. A human
+                               readable string and the process length is
+                               supplied. The callback has to return another
+                               function which will be executed after each step.
+            message: Messaging printing method for above log but below warning
+                     level output, i.e. infos that should generally be shown to
+                     users.
             **kwargs: Setup parameters, i.e. CLI parameters of the train() command.
 
         Returns:

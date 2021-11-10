@@ -71,16 +71,16 @@ def generate_input_transforms(batch: int,
     tensor usable in a network forward pass.
 
     Args:
-        batch (int): mini-batch size
-        height (int): height of input image in pixels
-        width (int): width of input image in pixels
-        channels (int): color channels of input
-        pad (int): Amount of padding on horizontal ends of image
-        valid_norm (bool): Enables/disables baseline normalization as a valid
-                           preprocessing step. If disabled we will fall back to
-                           standard scaling.
-        force_binarization (bool): Forces binarization of input images using
-                                   the nlbin algorithm.
+        batch: mini-batch size
+        height: height of input image in pixels
+        width: width of input image in pixels
+        channels: color channels of input
+        pad: Amount of padding on horizontal ends of image
+        valid_norm: Enables/disables baseline normalization as a valid
+                    preprocessing step. If disabled we will fall back to
+                    standard scaling.
+        force_binarization: Forces binarization of input images using the nlbin
+                            algorithm.
 
     Returns:
         A torchvision transformation composition converting the input image to
@@ -252,8 +252,8 @@ def compute_error(model: TorchSeqRecognizer, validation_set: Iterable[Dict[str, 
     Computes error report from a model and a list of line image-text pairs.
 
     Args:
-        model (kraken.lib.models.TorchSeqRecognizer): Model used for recognition
-        validation_set (list): List of tuples (image, text) for validation
+        model: Model used for recognition
+        validation_set: List of tuples (image, text) for validation
 
     Returns:
         A tuple with total number of characters and edit distance across the
@@ -269,7 +269,7 @@ def compute_error(model: TorchSeqRecognizer, validation_set: Iterable[Dict[str, 
     return total_chars, error
 
 
-def preparse_xml_data(filenames, format_type='xml', repolygonize=False):
+def preparse_xml_data(filenames: List[str], format_type: str = 'xml', repolygonize: bool = False):
     """
     Loads training data from a set of xml files.
 
@@ -277,15 +277,18 @@ def preparse_xml_data(filenames, format_type='xml', repolygonize=False):
     recognition models.
 
     Args:
-        filenames (list): List of XML files.
-        format_type (str): Either `page`, `alto` or `xml` for
-                           autodetermination.
-        repolygonize (bool): (Re-)calculates polygon information using the
-                             kraken algorithm.
+        filenames: List of XML files.
+        format_type: Either `page`, `alto` or `xml` for autodetermination.
+        repolygonize: (Re-)calculates polygon information using the kraken
+                      algorithm.
 
     Returns:
-        A list of dicts {'text': text, 'baseline': [[x0, y0], ...], 'boundary':
-        [[x0, y0], ...], 'image': PIL.Image}.
+        A list of dicts::
+
+            [{'text': text,
+              'baseline': [[x0, y0], ...],
+              'boundary': [[x0, y0], ...],
+              'image': PIL.Image}, ...]
     """
     training_pairs = []
     if format_type == 'xml':
@@ -317,14 +320,18 @@ def preparse_xml_data(filenames, format_type='xml', repolygonize=False):
     return training_pairs
 
 
-def _repolygonize(im: Image.Image, lines):
+def _repolygonize(im: Image.Image, lines: List[str, Any]) -> Dict[str, Any]:
     """
     Helper function taking an output of the lib.xml parse_* functions and
     recalculating the contained polygonization.
 
     Args:
-        im (Image.Image): Input image
-        lines (list): List of dicts [{'boundary': [[x0, y0], ...], 'baseline': [[x0, y0], ...], 'text': 'abcvsd'}, {...]
+        im: Input image
+        lines: List of dicts::
+
+                [{'boundary': [[x0, y0], ...],
+                  'baseline': [[x0, y0], ...],
+                  'text': 'abcvsd'}, {...]
 
     Returns:
         A data structure `lines` with a changed polygonization.

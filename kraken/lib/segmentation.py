@@ -105,7 +105,6 @@ def reading_order(lines: Sequence[Tuple[slice, slice]], text_direction: str = 'l
             else:
                 if [w for w in lines if _separates(w, u, v)] == []:
                     if horizontal_order(u, v):
-                        print(f'{u} - {v}')
                         order[i, j] = 1
     return order
 
@@ -358,7 +357,7 @@ def vectorize_regions(im: np.ndarray, threshold: float = 0.5):
         boundaries = [boundaries.boundary]
     else:
         boundaries = [x.boundary for x in unary_union(boundaries)]
-    return [np.array(x, dtype=np.uint)[:, [1, 0]].tolist() for x in boundaries]
+    return [np.array(x.coords, dtype=np.uint)[:, [1, 0]].tolist() for x in boundaries]
 
 
 def _rotate(image, angle, center, scale, cval=0):
@@ -580,7 +579,7 @@ def _calc_roi(line, bounds, baselines, suppl_obj, p_dir):
     def _find_closest_point(pt, intersects):
         spt = geom.Point(pt)
         if intersects.type == 'MultiPoint':
-            return min([p for p in intersects], key=lambda x: spt.distance(x))
+            return min([p for p in intersects.geoms], key=lambda x: spt.distance(x))
         elif intersects.type == 'Point':
             return intersects
         elif intersects.type == 'GeometryCollection' and len(intersects) > 0:
@@ -775,10 +774,10 @@ def is_in_region(line, region) -> bool:
 
     Args:
         line (geom.LineString): line to test
-        region (geom.Polygon):
+        region (geom.Polygon): region to test against
 
     Returns:
-        False if line is not inside region, True otherwise
+        False if line is not inside region, True otherwise.
     """
     l_obj = line.interpolate(0.5, normalized=True)
     return region.contains(l_obj)
@@ -839,7 +838,10 @@ def _test_intersect(bp, uv, bs):
     return np.array(points)
 
 
-def compute_polygon_section(baseline, boundary, dist1, dist2):
+def compute_polygon_section(baseline: Sequence[Tuple[int, int]],
+                            boundary: Sequence[Tuple[int, int]],
+                            dist1: int,
+                            dist2: int) -> List[Tuple[int, int]]:
     """
     Given a baseline, polygonal boundary, and two points on the baseline return
     the rectangle formed by the orthogonal cuts on that baseline segment. The
@@ -915,7 +917,8 @@ def extract_polygons(im: Image.Image, bounds: Dict[str, Any]) -> Image.Image:
 
     Args:
         im (PIL.Image.Image): Input image
-        bounds (list): A list of tuples (x1, y1, x2, y2)
+        bounds (Dict[str, Any]): A dictionary defining either a legacy bounding
+                                 box line or a baseline/bounding polygon line.
 
     Yields:
         (PIL.Image.Image) the extracted subimage
@@ -980,7 +983,7 @@ def extract_polygons(im: Image.Image, bounds: Dict[str, Any]) -> Image.Image:
                 for point in pl.geoms:
                     npoint = np.array(point)
                     line_idx, dist, intercept = min(((idx, line.project(point),
-                                                      np.array(line.interpolate(line.project(point)))) for idx, line in enumerate(bl)),
+                                                      np.array(line.interpolate(line.project(point))).coords) for idx, line in enumerate(bl)),
                                                     key=lambda x: np.linalg.norm(npoint-x[2]))
                     # absolute distance from start of line
                     line_dist = cum_lens[line_idx] + dist
