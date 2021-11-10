@@ -30,7 +30,7 @@ import shapely.geometry as geom
 import torch.nn.functional as F
 import torchvision.transforms as tf
 
-from typing import Optional, Dict, Callable, Union, List, Any
+from typing import Optional, Dict, Callable, Union, List, Any, Tuple
 
 from scipy.ndimage.filters import gaussian_filter
 from skimage.filters import sobel

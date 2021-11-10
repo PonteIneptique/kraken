@@ -24,6 +24,7 @@ from itertools import groupby
 from lxml import etree
 from os.path import dirname
 
+from typing import Dict, Any
 from collections import defaultdict
 from kraken.lib.exceptions import KrakenInputException
 
