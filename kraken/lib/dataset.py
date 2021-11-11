@@ -320,7 +320,7 @@ def preparse_xml_data(filenames: List[str], format_type: str = 'xml', repolygoni
     return training_pairs
 
 
-def _repolygonize(im: Image.Image, lines: List[str, Any]) -> Dict[str, Any]:
+def _repolygonize(im: Image.Image, lines: Dict[str, Any]) -> Dict[str, Any]:
     """
     Helper function taking an output of the lib.xml parse_* functions and
     recalculating the contained polygonization.
