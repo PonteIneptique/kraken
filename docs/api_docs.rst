@@ -158,12 +158,28 @@ Helpers
 
 .. autoapifunction:: kraken.lib.dataset.generate_input_transforms
 
-%kraken.lib.segmentation module
-%------------------------------
-%
-%.. autoapimodule:: kraken.lib.segmentation
-%    :members:
-%
+kraken.lib.segmentation module
+------------------------------
+
+.. autoapifunction:: kraken.lib.segmentation.reading_order
+
+.. autoapifunction:: kraken.lib.segmentation.polygonal_reading_order
+
+.. autoapifunction:: kraken.lib.segmentation.denoising_hysteresis_thresh
+
+.. autoapifunction:: kraken.lib.segmentation.vectorize_lines
+
+.. autoapifunction:: kraken.lib.segmentation.calculate_polygonal_environment
+
+.. autoapifunction:: kraken.lib.segmentation.scale_polygonal_lines
+
+.. autoapifunction:: kraken.lib.segmentation.scale_regions
+
+.. autoapifunction:: kraken.lib.segmentation.compute_polygon_section
+
+.. autoapifunction:: kraken.lib.segmentation.extract_polygons
+
+
 kraken.lib.ctc_decoder
 ======================
 
@@ -204,6 +220,11 @@ kraken.lib.exceptions
 Legacy modules
 ==============
 
+These modules are retained for compatibility reasons or highly specialized use
+cases. In most cases their use is not necessary and they aren't further
+developed for interoperability with new functionality, e.g. the transcription
+and line generation modules do not work with the baseline segmenter.
+
 kraken.binarization module
 --------------------------
 
@@ -217,3 +238,12 @@ kraken.transcribe module
 
 kraken.linegen module
 ---------------------
+
+.. autoapiclass:: kraken.transcribe.LineGenerator
+    :members:
+
+.. autoapifunction:: kraken.transcribe.ocropy_degrade
+
+.. autoapifunction:: kraken.transcribe.degrade_line
+
+.. autoapifunction:: kraken.transcribe.distort_line
