@@ -186,6 +186,17 @@ Training Tutorial
 
 There is a training tutorial at :doc:`training`.
 
+Related Software
+================
+
+These days kraken is quite closely linked to the `escriptorium
+<https://escriptorium.fr>`_ project developed in the same eScripta research
+group. eScriptorium provides a user-friendly interface for annotating data,
+training models, and inference (but also much more). There is a `gitter channel
+<https://gitter.im/escripta/escriptorium>`_ that is mostly intended for
+coordinating technical development but is also a spot to find people with
+experience on applying kraken on a wide variety of material.
+
 .. _license:
 
 License
