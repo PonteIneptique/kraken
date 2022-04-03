@@ -561,6 +561,21 @@ class ArrowIPCRecognitionDataset(Dataset):
             self.arrow_table = pa.concat_tables([self.arrow_table, ds_table])
         self._num_lines += num_lines
 
+    def rebuild_alphabet(self):
+        self.alphabet = Counter()
+        for index in range(len(self)):
+            text = self._apply_text_transform(self.arrow_table.column('lines')[index].as_py())
+            self.alphabet.update(text)
+
+    def _apply_text_transform(self, sample):
+        text = sample['text']
+        for func in self.text_transforms:
+            text = func(text)
+        if not text:
+            logger.debug(f'Text line "{sample["text"]}" is empty after transformations')
+            raise Exception('empty text line')
+        return text
+
     def encode(self, codec: Optional[PytorchCodec] = None) -> None:
         """
         Adds a codec to the dataset.
@@ -597,12 +612,7 @@ class ArrowIPCRecognitionDataset(Dataset):
                 im = im.permute((1, 2, 0)).numpy()
                 o = self.aug(image=im)
                 im = torch.tensor(o['image'].transpose(2, 0, 1))
-            text = sample['text']
-            for func in self.text_transforms:
-                text = func(text)
-            if not text:
-                logger.debug(f'Text line "{sample["text"]}" is empty after transformations')
-                raise Exception('empty text line')
+            text = self._apply_text_transform(sample)
         except Exception:
             idx = np.random.randint(0, len(self))
             logger.debug(traceback.format_exc())
