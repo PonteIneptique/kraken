@@ -1314,6 +1314,7 @@ def segtest(
     import torch
     import torch.nn.functional as F
 
+    import tabulate
     from kraken.lib.train import BaselineSet, ImageInputTransforms, Subset
     from kraken.lib.vgsl import TorchVGSLModel
 
@@ -1418,6 +1419,34 @@ def segtest(
     lines_idx = list(test_set.class_mapping["baselines"].values())
     regions_idx = list(test_set.class_mapping["regions"].values())
 
+    def _compute_iou_overlap(classes_idx: List[int], y: torch.BoolTensor, pred: torch.BoolTensor):
+        return {
+            "intersections": torch.stack([
+                (
+                        (
+                            y[line_idx].unsqueeze(0).repeat(len(classes_idx) - 1, 1)
+                        ) & (
+                            pred[[subline_idx for subline_idx in classes_idx if subline_idx != line_idx]]
+                        )
+                ).sum(dim=1, dtype=torch.double)
+                for line_idx in classes_idx
+                ],
+                dim=0
+            ),
+            "unions": torch.stack([
+                (
+                        (
+                            y[line_idx].squeeze(0).repeat(len(classes_idx) - 1, 1)
+                        ) | (
+                            pred[[subline_idx for subline_idx in classes_idx if subline_idx != line_idx]]
+                        )
+                ).sum(dim=1, dtype=torch.double)
+                for line_idx in classes_idx
+                ],
+                dim=0
+            )
+        }
+
     with KrakenProgressBar() as progress:
         batches = len(ds_loader)
         pred_task = progress.add_task('Evaluating', total=batches, visible=True if not ctx.meta['verbose'] else False)
@@ -1445,6 +1474,9 @@ def segtest(
                         'intersections': (y_baselines & pred_baselines).sum(dim=0, dtype=torch.double),
                         'unions': (y_baselines | pred_baselines).sum(dim=0, dtype=torch.double),
                     }
+                    # Confusion
+                    if len(lines_idx) > 1:
+                        pages[-1]["baselines"]["confusion"] = _compute_iou_overlap(lines_idx, y=y, pred=pred)
                 if regions_idx:
                     y_regions_idx = y[regions_idx].sum(dim=0, dtype=torch.bool)
                     pred_regions_idx = pred[regions_idx].sum(dim=0, dtype=torch.bool)
@@ -1452,6 +1484,8 @@ def segtest(
                         'intersections': (y_regions_idx & pred_regions_idx).sum(dim=0, dtype=torch.double),
                         'unions': (y_regions_idx | pred_regions_idx).sum(dim=0, dtype=torch.double),
                     }
+                    if len(regions_idx) > 1:
+                        pages[-1]["regions"]["confusion"] = _compute_iou_overlap(regions_idx, y=y, pred=pred)
 
             except FileNotFoundError as e:
                 batches -= 1
@@ -1494,28 +1528,83 @@ def segtest(
         class_iu,
         class_pixel_accuracy
     ):
+        # Only do those with supports
         out.append({"Category": cat, "Class name": class_name,
-                    "Pixel Accuracy": f"{pix_acc:.3f}", "Intersection / Union": f"{iu:.3f}",
+                    "Pixel Accuracy": f"{pix_acc:.3f}",
+                    "Intersection / Union": f"{iu:.3f}",
                     "Support": test_set.class_stats[cat][class_name] if cat != "aux" else "N/A"})
 
     # Region accuracies
+    inv_class_names = dict([
+        (val, key) for (cat, subcategory) in test_set.class_mapping.items() for key, val in subcategory.items()
+    ])
+
+    def _compute_overlap_iou(
+        classes: List[int],
+        category: str = "baselines",
+        smooth: torch.FloatType = torch.finfo(torch.float).eps
+    ):
+        # Compute Overlap between classes
+        ov_intersections = torch.stack(
+            [x[category]["confusion"]['intersections'] for x in pages],
+            dim=-1
+        ).sum(dim=-1)
+        ov_unions = torch.stack(
+            [x[category]["confusion"]['unions'] for x in pages],
+            dim=-1
+        ).sum(dim=-1)
+        ov_iu = ((ov_intersections + smooth) / (ov_unions + smooth)).tolist()
+        table = []
+        for row_idx, row_class_idx in enumerate(classes):
+            table.append({
+                "Source": inv_class_names[row_class_idx],
+                **{
+                    inv_class_names[secondary_line_idx]: (
+                        f"{ov_iu[row_idx][pred_idx]:.3f}" if ov_iu[row_idx][pred_idx] != 1 else ""
+                    )
+                    for pred_idx, secondary_line_idx in enumerate([
+                        _x
+                        for _x in classes
+                        if _x != row_class_idx
+                    ])
+
+                }
+            })
+        return table
+
     if lines_idx:
         line_intersections = torch.stack([x["baselines"]['intersections'] for x in pages]).sum()
         line_unions = torch.stack([x["baselines"]['unions'] for x in pages]).sum()
-        smooth = torch.finfo(torch.float).eps
         line_iu = (line_intersections + smooth) / (line_unions + smooth)
         message(f"Class-independent baselines Intersection / Union: {line_iu.item():.3f}")
+
+        if len(lines_idx) > 1:
+            # Compute Overlap between classes
+            message(
+                "\n Line Intersection / Union Overlap " + tabulate.tabulate(
+                    _compute_overlap_iou(lines_idx, category="baselines"),
+                    headers="keys",
+                    tablefmt="markdown"
+                )
+            )
 
     # Region accuracies
     if regions_idx:
         region_intersections = torch.stack([x["regions"]['intersections'] for x in pages]).sum()
         region_unions = torch.stack([x["regions"]['unions'] for x in pages]).sum()
-        smooth = torch.finfo(torch.float).eps
         region_iu = (region_intersections + smooth) / (region_unions + smooth)
         message(f"Class-independent regions Intersection / Union: {region_iu.item():.3f}")
+        if len(regions_idx):
+            message(
+                "\n Region Intersection / Union Overlap " + tabulate.tabulate(
+                    _compute_overlap_iou(regions_idx, category="regions"),
+                    headers="keys",
+                    tablefmt="markdown"
+                )
+            )
 
-    import tabulate
-    message(tabulate.tabulate(out, headers="keys", tablefmt="markdown"))
+    message("\nPer category metrics\n" + tabulate.tabulate(out, headers="keys", tablefmt="markdown"))
+
 
 if __name__ == '__main__':
     cli()
