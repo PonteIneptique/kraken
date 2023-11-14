@@ -2,8 +2,28 @@
 """
 Reads in a bunch of ALTO documents and repolygonizes the lines contained with
 the kraken polygonizer.
+
+python -m kraken.contrib.repolygonize -f FORMAT --baseline baseline *.xml
+
 """
 import click
+from lxml import etree
+
+
+def create_and_add_node_with_namespace(source_node: etree.Element, tag: str, text=None):
+    # Get the namespace of the source node
+    namespace = source_node.nsmap.get(None, '')
+
+    # Create a new element with the same namespace
+    new_element = etree.Element(f"{{{namespace}}}{tag}")
+
+    # Set text if provided
+    if text is not None:
+        new_element.text = text
+
+    # Add the source node as a child of the new element
+    source_node.append(new_element)
+    return new_element
 
 
 @click.command()
@@ -39,17 +59,18 @@ def cli(format_type, topline, files):
     def _repl_alto(fname, polygons):
         with open(fname, 'rb') as fp:
             doc = etree.parse(fp)
-            lines = doc.findall('.//{*}TextLine')
-            idx = 0
-            for line in lines:
+            for idx, line in enumerate(doc.findall('.//{*}TextLine')):
                 if line.get('BASELINE') is None:
                     continue
                 pol = line.find('./{*}Shape/{*}Polygon')
-                if pol is not None:
-                    if polygons[idx] is not None:
-                        pol.attrib['POINTS'] = ' '.join([str(coord) for pt in polygons[idx] for coord in pt])
-                    else:
-                        pol.attrib['POINTS'] = ''
+                if pol is None:
+                    shape = create_and_add_node_with_namespace(line, "Shape")
+                    pol = create_and_add_node_with_namespace(shape, "Polygon")
+
+                if polygons[idx] is not None:
+                    pol.attrib['POINTS'] = ' '.join([str(coord) for pt in polygons[idx] for coord in pt])
+                else:
+                    pol.attrib['POINTS'] = ''
                 idx += 1
             with open(splitext(fname)[0] + '_rewrite.xml', 'wb') as fp:
                 doc.write(fp, encoding='UTF-8', xml_declaration=True)
@@ -100,10 +121,30 @@ def cli(format_type, topline, files):
         seg = parse_fn(doc)
         im = Image.open(seg['image']).convert('L')
         baselines = []
-        for x in seg['lines']:
+        passed = []
+        for line_idx, x in enumerate(seg['lines']):
             bl = x['baseline'] if x['baseline'] is not None else [0, 0]
-            baselines.append(bl)
-        o = calculate_polygonal_environment(im, baselines, scale=(1800, 0), topline=topline)
+            if bl == [0, 0]:
+                passed.append(line_idx)
+            elif len(bl):
+                baselines.append(bl)
+            else:
+                passed.append(line_idx)
+        o = calculate_polygonal_environment(
+            im,
+            baselines,
+            scale=(1800, 0),
+            topline=topline,
+            suppl_obj=[
+                zone
+                for zone_per_tag in seg.get("regions", {}).values()
+                for zone in zone_per_tag
+                if isinstance(zone, list) and len(zone) and zone != [0, 0]
+            ]
+        )
+        for idx in passed:
+            o.insert(idx, None)
+        assert len(o) == len(seg['lines']), "Input number of lines is different from output number of lines"
         repl_fn(doc, o)
 
 
