@@ -61,6 +61,9 @@ __all__ = ['reading_order',
            'extract_polygons']
 
 
+MASK_VAL = 99999
+
+
 def reading_order(lines: Sequence[Tuple[slice, slice]], text_direction: Literal['lr', 'rl'] = 'lr') -> np.ndarray:
     """Given the list of lines (a list of 2D slices), computes
     the partial reading order.  The output is a binary 2D array
@@ -448,7 +451,7 @@ def _ray_intersect_boundaries(ray, direction, aabb):
     return ray + (direction * t)
 
 
-def _calc_seam(baseline, polygon, angle, im_feats, bias=150):
+def _calc_seam(baseline, polygon, angle, im_feats, bias=150, mask_val=MASK_VAL):
     """
     Calculates seam between baseline and ROI boundary on one side.
 
@@ -456,7 +459,6 @@ def _calc_seam(baseline, polygon, angle, im_feats, bias=150):
     out the bounding polygon and rotates the line so it is roughly
     level.
     """
-    MASK_VAL = 99999
     r, c = draw.polygon(polygon[:, 1], polygon[:, 0])
     c_min, c_max = int(polygon[:, 0].min()), int(polygon[:, 0].max())
     r_min, r_max = int(polygon[:, 1].min()), int(polygon[:, 1].max())
@@ -1023,6 +1025,22 @@ def compute_polygon_section(baseline: Sequence[Tuple[int, int]],
     o.extend(np.int_(np.roll(points[1], 2)).reshape(-1, 2).tolist())
     return tuple(o)
 
+def find_edge_coordinates(mask):
+    from scipy import ndimage
+    # Find connected components in the binary mask
+    labeled_mask, num_features = ndimage.label(mask)
+
+    # Find bounding boxes for each connected component
+    objects = ndimage.find_objects(labeled_mask)
+
+    # Extract coordinates of the edges
+    edge_coordinates = []
+    for obj in objects:
+        if obj is not None:
+            y_coords, x_coords = np.where(mask[obj] == 1)
+            edge_coordinates.extend(np.column_stack((x_coords + obj[1].start, y_coords + obj[0].start)))
+
+    return np.array(edge_coordinates)
 
 def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
     """
@@ -1072,10 +1090,21 @@ def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
                 r, c = draw.polygon(offset_polygon[:, 1], offset_polygon[:, 0])
                 mask = np.zeros(patch.shape[:2], dtype=bool)
                 mask[r, c] = True
-                patch[mask != True] = 0
+
+                edge_colors = patch[mask == 1]
+                most_common_edge_color = np.median(edge_colors, axis=0)
+                patch[mask != True] = most_common_edge_color
+
                 extrema = offset_polygon[(0, -1), :]
                 # scale line image to max 600 pixel width
-                tform, rotated_patch = _rotate(patch, angle, center=extrema[0], scale=1.0, cval=0)
+
+                dynamic_cval = np.setdiff1d(np.arange(256), patch[:, :, :])[0] or 0
+                tform, rotated_patch = _rotate(patch, angle, center=extrema[0], scale=1.0, cval=dynamic_cval)
+                if rotated_patch.ndim == 3:
+                    edge = np.all(rotated_patch[:, :, -3:] == [dynamic_cval, dynamic_cval, dynamic_cval], axis=-1)
+                else:
+                    edge = np.all(rotated_patch == dynamic_cval, axis=-1)
+                rotated_patch[edge] = most_common_edge_color
                 i = Image.fromarray(rotated_patch.astype('uint8'))
             # normal slow path with piecewise affine transformation
             else:
@@ -1125,13 +1154,22 @@ def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
                 mask = np.zeros(patch.shape[:2], dtype=bool)
                 r, c = draw.polygon(offset_polygon[:, 1], offset_polygon[:, 0])
                 mask[r, c] = True
-                patch[mask != True] = 0
+
+                edge_colors = patch[mask == 1]
+                most_common_edge_color = np.median(edge_colors, axis=0)
+                patch[mask != True] = most_common_edge_color
+                # patch[mask != True] = most_common_color
+
                 # estimate piecewise transform
                 src_points = np.concatenate((offset_baseline, offset_polygon))
                 dst_points = np.concatenate((offset_bl_dst_pts, offset_pol_dst_pts))
                 tform = PiecewiseAffineTransform()
                 tform.estimate(src_points, dst_points)
-                o = warp(patch, tform.inverse, output_shape=output_shape, preserve_range=True, order=order)
+
+                dynamic_cval = np.setdiff1d(np.arange(256), patch[:, :, :])[0]
+                o = warp(patch, tform.inverse, output_shape=output_shape, preserve_range=True, order=order,
+                         mode="constant", cval=dynamic_cval)
+                o[np.all(o[:, :, -3:] == [dynamic_cval, dynamic_cval, dynamic_cval], axis=-1)] = most_common_edge_color
                 i = Image.fromarray(o.astype('uint8'))
             yield i.crop(i.getbbox()), line
     else:
