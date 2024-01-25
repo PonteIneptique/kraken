@@ -1025,22 +1025,23 @@ def compute_polygon_section(baseline: Sequence[Tuple[int, int]],
     o.extend(np.int_(np.roll(points[1], 2)).reshape(-1, 2).tolist())
     return tuple(o)
 
-def find_edge_coordinates(mask):
-    from scipy import ndimage
-    # Find connected components in the binary mask
-    labeled_mask, num_features = ndimage.label(mask)
 
-    # Find bounding boxes for each connected component
-    objects = ndimage.find_objects(labeled_mask)
+def find_masking_color(array, default=255):
+    if array.ndim == 2:  # On grey level, return white
+        return default
+    not_found_color = np.setdiff1d(np.arange(256), array)
+    if len(not_found_color):
+        return not_found_color[0]
+    return default
 
-    # Extract coordinates of the edges
-    edge_coordinates = []
-    for obj in objects:
-        if obj is not None:
-            y_coords, x_coords = np.where(mask[obj] == 1)
-            edge_coordinates.extend(np.column_stack((x_coords + obj[1].start, y_coords + obj[0].start)))
 
-    return np.array(edge_coordinates)
+def find_most_common_color(patch, mask) -> np.array:
+    # if patch.ndim == 2:
+    #     return 255  # Defaults on white for grey level
+    edge_colors = patch[mask == 1]
+    most_common_edge_color = np.median(edge_colors, axis=0)
+    return most_common_edge_color
+
 
 def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
     """
@@ -1091,14 +1092,13 @@ def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
                 mask = np.zeros(patch.shape[:2], dtype=bool)
                 mask[r, c] = True
 
-                edge_colors = patch[mask == 1]
-                most_common_edge_color = np.median(edge_colors, axis=0)
+                most_common_edge_color = find_most_common_color(patch, mask)
                 patch[mask != True] = most_common_edge_color
 
                 extrema = offset_polygon[(0, -1), :]
                 # scale line image to max 600 pixel width
+                dynamic_cval = find_masking_color(patch, default=255)
 
-                dynamic_cval = np.setdiff1d(np.arange(256), patch[:, :, :])[0] or 0
                 tform, rotated_patch = _rotate(patch, angle, center=extrema[0], scale=1.0, cval=dynamic_cval)
                 if rotated_patch.ndim == 3:
                     edge = np.all(rotated_patch[:, :, -3:] == [dynamic_cval, dynamic_cval, dynamic_cval], axis=-1)
@@ -1155,10 +1155,8 @@ def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
                 r, c = draw.polygon(offset_polygon[:, 1], offset_polygon[:, 0])
                 mask[r, c] = True
 
-                edge_colors = patch[mask == 1]
-                most_common_edge_color = np.median(edge_colors, axis=0)
+                most_common_edge_color = find_most_common_color(patch, mask)
                 patch[mask != True] = most_common_edge_color
-                # patch[mask != True] = most_common_color
 
                 # estimate piecewise transform
                 src_points = np.concatenate((offset_baseline, offset_polygon))
@@ -1166,10 +1164,20 @@ def extract_polygons(im: Image.Image, bounds: 'Segmentation') -> Image.Image:
                 tform = PiecewiseAffineTransform()
                 tform.estimate(src_points, dst_points)
 
-                dynamic_cval = np.setdiff1d(np.arange(256), patch[:, :, :])[0]
+                # Get a dynamic mask color, as something in warp overrides any non color
+                # Default on white
+                dynamic_cval = find_masking_color(patch, default=255)
+
                 o = warp(patch, tform.inverse, output_shape=output_shape, preserve_range=True, order=order,
                          mode="constant", cval=dynamic_cval)
-                o[np.all(o[:, :, -3:] == [dynamic_cval, dynamic_cval, dynamic_cval], axis=-1)] = most_common_edge_color
+
+                # Replaces the mask color (dynamic_cval) with the median color
+                if o.ndim == 3:
+                    masking = np.all(o == dynamic_cval, axis=-1)
+                else:
+                    masking = o == dynamic_cval
+                o[masking] = most_common_edge_color
+
                 i = Image.fromarray(o.astype('uint8'))
             yield i.crop(i.getbbox()), line
     else:
