@@ -128,6 +128,14 @@ class CTCRecognitionInferenceMixin:
                 while next_idx_to_emit < self._len and rec_results[next_idx_to_emit] is not None:
                     yield rec_results[next_idx_to_emit]
                     next_idx_to_emit += 1
+            # the last extracted line can have an empty record and never reach the flush condition above
+            if input_queue:
+                for rec, idx in self._line_iter(input_queue, segmentation):
+                    rec_results[idx] = rec
+                input_queue.clear()
+            while next_idx_to_emit < self._len and rec_results[next_idx_to_emit] is not None:
+                yield rec_results[next_idx_to_emit]
+                next_idx_to_emit += 1
 
     def _recognize_box_lines(self,
                              lines: list[tuple['torch.Tensor', 'Image.Image', int]],
