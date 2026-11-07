@@ -262,6 +262,12 @@ class SegmentationInferenceConfig(Config):
         bbox_line_padding (Union[int, tuple[int, int]], defaults to 0):
             Padding to be added around left/right side of bounding boxes in bbox *line* segmenter.
 
+        > Parameters for baseline segmenters
+
+        num_workers (int, defaults to 1):
+            Number of processes to polygonize lines with. Needs the fork start
+            method, otherwise lines are polygonized in the calling process.
+
         > Parameters for reading order determination
 
         bbox_ro_fn (Callable, defaults t kraken.lib.segmentation.reading_order):
@@ -279,6 +285,7 @@ class SegmentationInferenceConfig(Config):
         self.legacy_no_hlines = kwargs.pop('legacy_no_hlines', True)
         self.bbox_line_padding = kwargs.pop('bbox_line_padding', 0)
         self.input_padding = kwargs.pop('input_padding', 0)
+        self.num_workers = kwargs.pop('num_workers', 1)
         from kraken.lib.segmentation import reading_order, polygonal_reading_order
         self.bbox_ro_fn = kwargs.pop('bbox_ro_fn', reading_order)
         self.baseline_ro_fn = kwargs.pop('baseline_ro_fn', polygonal_reading_order)

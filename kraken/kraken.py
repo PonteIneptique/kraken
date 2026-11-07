@@ -479,6 +479,7 @@ def binarize(ctx, threshold, zoom, escale, border, perc, range, low, high):
 @click.option('-r/-l', '--remove-hlines/--hlines', 'legacy_no_hlines')
 @click.option('-p', '--pad', 'bbox_line_padding', type=int, help='Left and right padding around lines. Only for BBox segmenter.')
 @click.option('--input-pad', 'input_padding', type=int, help='Padding to add around input image.')
+@click.option('--num-workers', 'num_workers', type=click.IntRange(1), default=1, show_default=True, help='Number of processes to polygonize lines with.')
 def segment(ctx, **kwargs):
     """
     Segments page images into text lines.

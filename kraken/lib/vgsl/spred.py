@@ -17,8 +17,10 @@ VGSL segmentation inference (BLLA)
 """
 import PIL
 import uuid
+import atexit
 import torch
 import logging
+import multiprocessing as mp
 import numpy as np
 import shapely.geometry as geom
 import torch.nn.functional as F
@@ -71,6 +73,31 @@ def vec_regions(heatmap: torch.Tensor, cls_map: dict, scale: float, **kwargs) ->
     return regions
 
 
+_pool = None
+_pool_size = 0
+
+
+def _get_pool(num_workers: int):
+    # forked once and kept: forking (and killing) processes that hold a CUDA context is slow
+    global _pool, _pool_size
+    if _pool_size != num_workers:
+        if _pool is not None:
+            _pool.terminate()
+        _pool = mp.get_context('fork').Pool(num_workers)
+        _pool_size = num_workers
+        atexit.register(_pool.terminate)
+    return _pool
+
+
+def _polygonize(task):
+    baseline, suppl_obj, im_feats, topline, raise_on_error = task
+    return calculate_polygonal_environment(baselines=[baseline],
+                                           im_feats=im_feats,
+                                           suppl_obj=suppl_obj,
+                                           topline=topline,
+                                           raise_on_error=raise_on_error)[0]
+
+
 def vec_lines(heatmap: torch.Tensor,
               cls_map: dict[str, dict[str, int]],
               scale: float,
@@ -80,6 +107,8 @@ def vec_lines(heatmap: torch.Tensor,
               suppl_obj: list[np.ndarray] = None,
               topline: Optional[bool] = False,
               raise_on_error: bool = False,
+              device: Optional[torch.device] = None,
+              num_workers: int = 1,
               **kwargs) -> list[dict[str, Any]]:
     r"""
     Computes lines from a stack of heatmaps, a class mapping, and scaling
@@ -102,6 +131,10 @@ def vec_lines(heatmap: torch.Tensor,
                  centerline.
         raise_on_error: Raises error instead of logging them when they are
                         not-blocking
+        device: Torch device to run the ridge filter on. None or a CPU device
+                use skimage.
+        num_workers: Number of processes to polygonize lines with. The result
+                     does not depend on it.
 
     Returns:
         A list of dictionaries containing the baselines, bounding polygons, and
@@ -124,13 +157,13 @@ def vec_lines(heatmap: torch.Tensor,
     baselines = []
     for bl_type, idx in cls_map['baselines'].items():
         logger.debug(f'Vectorizing lines of type {bl_type}')
-        baselines.extend([(bl_type, x) for x in vectorize_lines(heatmap[(st_sep, end_sep, idx), :, :], text_direction=text_direction[:-3])])
+        baselines.extend([(bl_type, x) for x in vectorize_lines(heatmap[(st_sep, end_sep, idx), :, :], text_direction=text_direction[:-3], device=device)])
     logger.debug('Polygonizing lines')
 
     im_feats = gaussian_filter(sobel(scal_im), 0.5)
 
-    lines = []
     reg_pols = [geom.Polygon(x) for x in regions]
+    tasks = []
     for bl_idx in range(len(baselines)):
         bl = baselines[bl_idx]
         bl_ls = geom.LineString(bl[1])
@@ -138,13 +171,12 @@ def vec_lines(heatmap: torch.Tensor,
         for reg_idx, reg_pol in enumerate(reg_pols):
             if is_in_region(bl_ls, reg_pol):
                 suppl_obj.append(regions[reg_idx])
-        pol = calculate_polygonal_environment(baselines=[bl[1]],
-                                              im_feats=im_feats,
-                                              suppl_obj=suppl_obj,
-                                              topline=topline,
-                                              raise_on_error=raise_on_error)
-        if pol[0] is not None:
-            lines.append((bl[0], bl[1], pol[0]))
+        tasks.append((bl[1], suppl_obj, im_feats, topline, raise_on_error))
+    if num_workers > 1 and 'fork' in mp.get_all_start_methods():
+        pols = _get_pool(num_workers).map(_polygonize, tasks, chunksize=max(1, -(-len(tasks) // num_workers)))
+    else:
+        pols = [_polygonize(task) for task in tasks]
+    lines = [(bl[0], bl[1], pol) for bl, pol in zip(baselines, pols) if pol is not None]
 
     logger.debug('Scaling vectorized lines')
     sc = scale_polygonal_lines([x[1:] for x in lines], scale)
@@ -200,7 +232,9 @@ class VGSLSegmentationInference:
                           text_direction=self._inf_config.text_direction,
                           suppl_obj=suppl_obj,
                           topline=bool(self.user_metadata.get('topline', False)),
-                          raise_on_error=self._inf_config.raise_on_error)
+                          raise_on_error=self._inf_config.raise_on_error,
+                          device=self._fabric.device,
+                          num_workers=self._inf_config.num_workers)
 
         script_detection = len(rets['cls_map']['baselines']) > 1
 
